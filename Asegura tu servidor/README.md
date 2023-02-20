@@ -1,6 +1,6 @@
 # Asegura tu servidor
 
-- Comandos utilizados en el video:
+- Comandos utilizados en el video:https://youtu.be/_Hcm9ksOkqU
 - Estos comandos son para servidores con Ubuntu y derivadas.
 
 ## Actualizar el sistema
@@ -109,3 +109,66 @@ sudo fail2ban-client reload
 ```
 
 ## UFW
+
+Podemos crear reglas sencillas especificando si será para permitir(**allow**) o denegar (**deny**) y al final el servicio o puerto y protocolo.
+```bash
+sudo ufw allow ssh
+sudo ufw allow 9999
+sudo ufw allow 9999/tcp
+sudo ufw deny http
+sudo ufw deny https comment 'comentario'
+```
+Tenemos también las reglas por defecto.
+```bash
+sudo ufw default deny incoming comment 'deniega el tráfico entrante'
+sudo ufw default deny outgoing comment 'deniega el tráfico que sale'
+```
+Tras agregar las reglas deberemos de habilitarlas con el comando.
+```bash
+sudo ufw enable
+```
+Podemos ver las reglas activas con:
+```bash
+sudo ufw status
+```
+### UFW y docker
+Para que funcione junto con docker deberemos de editar el archivo **after.rules**.
+```bash
+sudo nvim /etc/ufw/after.rules
+```
+Y agregar el siguiente bloque de configuración al final der archivo antes de **COMMIT**.
+```bash
+# BEGIN UFW AND DOCKER```
+:ufw-user-forward - [0:0]
+:ufw-docker-logging-deny - [0:0]
+:DOCKER-USER - [0:0]
+-A DOCKER-USER -j ufw-user-forward
+
+-A DOCKER-USER -j RETURN -s 10.0.0.0/8
+-A DOCKER-USER -j RETURN -s 172.16.0.0/12
+-A DOCKER-USER -j RETURN -s 192.168.0.0/16
+
+-A DOCKER-USER -p udp -m udp --sport 53 --dport 1024:65535 -j RETURN
+
+-A DOCKER-USER -j ufw-docker-logging-deny -p tcp -m tcp --tcp-flags FIN,SYN,RST,ACK SYN -d 192.168.0.0/16
+-A DOCKER-USER -j ufw-docker-logging-deny -p tcp -m tcp --tcp-flags FIN,SYN,RST,ACK SYN -d 10.0.0.0/8
+-A DOCKER-USER -j ufw-docker-logging-deny -p tcp -m tcp --tcp-flags FIN,SYN,RST,ACK SYN -d 172.16.0.0/12
+-A DOCKER-USER -j ufw-docker-logging-deny -p udp -m udp --dport 0:32767 -d 192.168.0.0/16
+-A DOCKER-USER -j ufw-docker-logging-deny -p udp -m udp --dport 0:32767 -d 10.0.0.0/8
+-A DOCKER-USER -j ufw-docker-logging-deny -p udp -m udp --dport 0:32767 -d 172.16.0.0/12
+
+-A DOCKER-USER -j RETURN
+
+-A ufw-docker-logging-deny -m limit --limit 3/min --limit-burst 10 -j LOG --log-prefix "[UFW DOCKER BLOCK] "
+-A ufw-docker-logging-deny -j DROP
+
+# END UFW AND DOCKER
+```
+Ahora reniciaremos UFW.
+```bash
+sudo ufw reload
+```
+Una vez hecho esto podremos acceder a nuestros servicios de docker desde nuestra red local, pero el resto de internet no podrá. Si quieres hacer público uno de estos servicios deberás de utilizar el siguiente comando:
+```bash
+ufw route allow proto tcp from any to any port 80
+```
